@@ -22,7 +22,7 @@ def register_once(central_url, group_name, public_url):
         pass
 
 
-async def renew_registration():
+async def renew_registration(registered):
     central_url = os.getenv("CENTRAL_URL", "").rstrip("/")
     group_name = os.getenv("GROUP_NAME", "")
     public_url = os.getenv("PUBLIC_URL", "")
@@ -33,9 +33,10 @@ async def renew_registration():
 
     while True:
         try:
-            await asyncio.to_thread(register_once, central_url, group_name, public_url)
+            await asyncio.to_thread(register_once, central_url, group_name, public_url, registered.set())
             logger.info("Registro central confirmado para %s", group_name)
         except (OSError, ValueError) as error:
+            registered.clear()
             logger.warning("Registro central de %s pendiente: %s", group_name, error)
 
         await asyncio.sleep(10)

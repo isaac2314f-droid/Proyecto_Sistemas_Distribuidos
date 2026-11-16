@@ -1,6 +1,6 @@
 import asyncio
 import sqlite3
-from contextlib import asynccontextmanager, closing, suppress
+from contextlib import asynccontextmanager, closing
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from federation import renew_registration
 from inbox import DATABASE_PATH, GROUP_NAME, advance_clock, prepare_inbox, router
+from outbox import enqueue_message, prepare_outbox, send_pending
 
 
 @asynccontextmanager
@@ -31,15 +32,21 @@ async def lifespan(app: FastAPI):
             )
         """)
         prepare_inbox(db)
+        prepare_outbox(db)
         db.commit()
 
-    registration_task = asyncio.create_task(renew_registration())
+    registered = asyncio.Event()
+    tasks = (
+        asyncio.create_task(renew_registration(registered)),
+        asyncio.create_task(send_pending(registered)),
+    )
+
     try:
         yield
     finally:
-        registration_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await registration_task
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(title="Chat distribuido", lifespan=lifespan)
@@ -47,7 +54,11 @@ app.include_router(router)
 
 
 class UserCreate(BaseModel):
-    username: str = Field(min_length=1, max_length=24, pattern=r"^[a-zA-Z0-9_]+$")
+    username: str = Field(
+        min_length=1,
+        max_length=24,
+        pattern=r"^[a-zA-Z0-9_]+$",
+    )
 
 
 class MessageCreate(UserCreate):
@@ -56,7 +67,10 @@ class MessageCreate(UserCreate):
 
 @app.get("/", include_in_schema=False)
 def chat_page():
-    return FileResponse(Path(__file__).with_name("index.html"), media_type="text/html")
+    return FileResponse(
+        Path(__file__).with_name("index.html"),
+        media_type="text/html",
+    )
 
 
 @app.get("/health")
@@ -106,6 +120,7 @@ def create_message(message: MessageCreate):
             INSERT INTO messages (id, username, body, sent_at, origin, lamport)
             VALUES (:id, :username, :body, :sent_at, :origin, :lamport)
         """, saved)
+        enqueue_message(db, saved)
         db.commit()
 
     return saved
