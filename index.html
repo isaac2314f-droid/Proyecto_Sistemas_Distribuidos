@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>#general · Chat distribuido</title>
+  <style>
+    body { margin: 0; background: #f3f5f8; color: #18263a; font: 1rem system-ui, sans-serif; }
+    main { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    form, ul { padding: 1rem; border: 1px solid #d7dee8; border-radius: .75rem; background: white; }
+    ul { list-style: none; min-height: 10rem; max-height: 22rem; overflow-y: auto; }
+    li { padding: .65rem 0; border-bottom: 1px solid #e7ecf2; overflow-wrap: anywhere; }
+    li:last-child { border-bottom: 0; }
+    label { display: block; margin-bottom: .25rem; font-weight: 600; }
+    input, button { padding: .55rem; border: 1px solid #8997a8; border-radius: .4rem; font: inherit; }
+    input { flex: 1; min-width: 0; }
+    button { background: #164d9b; color: white; cursor: pointer; }
+    button:disabled { opacity: .65; }
+    .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+    .status { margin-bottom: 0; }
+    .status:empty { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>#general</h1>
+    <p id="connection" class="status" role="status"></p>
+    <ul id="history" aria-label="Historial de mensajes"></ul>
+
+    <form id="chat">
+      <label for="username">Usuario</label>
+      <div class="row">
+        <input id="username" placeholder="ana" required maxlength="24" pattern="[A-Za-z0-9_]+">
+        <button id="register" type="button">Registrar usuario</button>
+      </div>
+
+      <label for="body">Mensaje</label>
+      <div class="row">
+        <input id="body" placeholder="Escribe un mensaje" required maxlength="500">
+        <button id="send" type="submit">Enviar</button>
+      </div>
+      <p id="status" class="status" role="status"></p>
+    </form>
+  </main>
+
+  <script>
+    const chat = document.querySelector("#chat");
+    const username = document.querySelector("#username");
+    const body = document.querySelector("#body");
+    const historyList = document.querySelector("#history");
+    const connection = document.querySelector("#connection");
+    const feedback = document.querySelector("#status");
+    const register = document.querySelector("#register");
+    const send = document.querySelector("#send");
+    let lastHistory = null;
+    let loadingHistory = false;
+
+    async function request(path, payload) {
+      const options = payload
+        ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        : {};
+      const response = await fetch(path, options);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Revisa los datos ingresados.");
+      }
+      return data;
+    }
+
+    async function loadMessages() {
+      if (loadingHistory) return;
+      loadingHistory = true;
+      try {
+        const messages = await request("/messages");
+        connection.textContent = "";
+        const currentHistory = messages.map(message => message.id).join(",");
+        if (currentHistory === lastHistory) return;
+
+        const items = messages.map(message => {
+          const item = document.createElement("li");
+          const author = document.createElement("strong");
+          author.textContent = message.username + ": ";
+          item.append(author, message.body);
+          return item;
+        });
+
+        if (items.length === 0) {
+          const empty = document.createElement("li");
+          empty.textContent = "Todavía no hay mensajes.";
+          items.push(empty);
+        }
+
+        historyList.replaceChildren(...items);
+        historyList.scrollTop = historyList.scrollHeight;
+        lastHistory = currentHistory;
+      } catch {
+        connection.textContent = "No se pudo cargar el historial. Reintentando…";
+      } finally {
+        loadingHistory = false;
+      }
+    }
+
+    register.addEventListener("click", async () => {
+      if (!username.reportValidity()) return;
+      register.disabled = true;
+      try {
+        await request("/users", { username: username.value });
+        feedback.textContent = "Usuario registrado.";
+      } catch (error) {
+        feedback.textContent = error.message;
+      } finally {
+        register.disabled = false;
+      }
+    });
+
+    chat.addEventListener("submit", async event => {
+      event.preventDefault();
+      const text = body.value.trim();
+      if (!text) {
+        feedback.textContent = "Escribe un mensaje.";
+        return;
+      }
+
+      send.disabled = true;
+      try {
+        await request("/messages", { username: username.value, body: text });
+        body.value = "";
+        feedback.textContent = "";
+        await loadMessages();
+      } catch (error) {
+        feedback.textContent = error.message;
+      } finally {
+        send.disabled = false;
+      }
+    });
+
+    loadMessages();
+    setInterval(loadMessages, 3000);
+  </script>
+</body>
+</html>

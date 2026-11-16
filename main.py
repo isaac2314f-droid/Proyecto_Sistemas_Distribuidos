@@ -2,6 +2,8 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager, closing
 
+from pathlib import Path
+from fastapi.responses import FileResponse
 from datetime import datetime, timezone
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
@@ -99,3 +101,7 @@ def list_messages():
         """).fetchall()
 
     return [dict(message) for message in messages]
+
+@app.get("/", include_in_schema=False)
+def chat_page():
+    return FileResponse(Path(__file__).with_name("index.html"), media_type="text/html")
