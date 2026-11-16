@@ -3,3 +3,10 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      DATABASE_PATH: /data/chat.db
+    volumes:
+      - chat-data:/data
+
+volumes:
+  chat-data:
