@@ -1,7 +1,9 @@
 import os
 import sqlite3
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager, closing, suppress
 
+import asyncio
+from federation import renew_registration
 from pathlib import Path
 from fastapi.responses import FileResponse
 from datetime import datetime, timezone
@@ -29,7 +31,13 @@ async def lifespan(app: FastAPI):
             )
         """)
         db.commit()
-    yield
+    registration_task = asyncio.create_task(renew_registration())
+    try:
+        yield
+    finally:
+        registration_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await registration_task
 
 
 app = FastAPI(title="Chat distribuido", lifespan=lifespan)

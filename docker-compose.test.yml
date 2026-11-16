@@ -1,0 +1,12 @@
+services:
+  chat:
+    environment:
+      CENTRAL_URL: http://central:8000
+      GROUP_NAME: g3a
+      PUBLIC_URL: http://chat:8000
+
+  central:
+    build: .
+    command: ["python", "-m", "uvicorn", "central_mock:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./central_mock.py:/app/central_mock.py:ro
