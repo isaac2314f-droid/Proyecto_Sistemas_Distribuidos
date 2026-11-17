@@ -34,3 +34,13 @@ def accept_message(message: FederatedMessage):
     received.setdefault(message_id, message)
     logger.info("Central recibió id=%s lamport=%s", message_id, message.lamport)
     return {"status": "ok"}
+
+@app.get("/history")
+def get_history(since: int = 0):
+    messages = [
+        message
+        for message in received.copy().values()
+        if message.lamport > since
+    ]
+    messages.sort(key=lambda message: (message.lamport, message.origin, str(message.id)))
+    return [message.model_dump(mode="json", by_alias=True) for message in messages]
